@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Upload File</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+        <link rel="stylesheet" href="/home.css" />
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    </head>
+    <body>
+        <nav>
+            <div class="nav-wrapper">
+                <a href="#" class="brand-logo">Upload Files</a>
+                <form
+                    id="fileUploadForm" 
+                    method="POST"
+                    action="/upload" 
+                    class="right file-input" 
+                    enctype="multipart/form-data">
+                    <div class="file-field input-field">
+                        <div class="btn">
+                            <span>Select File</span>
+                            <input type="file" onchange="fileUpload()" name="file" id="fileInput">
+                        </div>
+                        <div class="file-path-wrapper">
+                            <input class="file-path validate" type="text">
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </nav>
+        <div>
+            <div class="row">
+            {{#blobs}}
+                <div class="col s12 m4">
+                    <div class="card blue-grey darken-1">
+                    <div class="card-content white-text">
+                        <span class="card-title">{{ name }}</span>
+                        <p class="size">{{ properties.contentLength }}</p>
+                    </div>
+                    <div class="card-action">
+                        <a href="#" data-filename="{{ name }}" onclick="fetchSAS(event)">Download</a>
+                    </div>
+                    </div>
+                </div>
+            {{/blobs}}
+            </div>
+        </div>
+        <!-- Modal Structure -->
+        <div class="modal">
+            <div class="modal-content">
+                <h4>Uploading <span id="modalFileName"></span></h4>
+                <p>Progress : <span id="modalPercentageProgress">0</span>%</p>
+                <div class="progress">
+                    <div class="determinate" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            // function fileUpload() {
+            //     document.getElementById('fileUploadForm')
+            //         .submit()
+            // }
+
+            function bytesToSize(bytes) {
+                var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+                if (bytes == 0) return '0 Byte';
+                var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+                return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+            }
+
+            function fetchSAS(e) {
+                var filename = e.target.dataset.filename
+                console.log('filename', filename)
+                fetch('/sas', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        filename: filename
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                }).then(res => res.text())
+                  .then(res => {
+                      document.location = res
+                  })
+                  .catch(e => console.error(e))
+            }
+
+            let polling
+
+            function fileUpload() {
+                const fileInput = document.querySelector('#fileInput')
+                const formData = new FormData()
+
+                formData.append('file', fileInput.files[0])
+                const options = {
+                    method: 'POST',
+                    body: formData
+                }
+
+                fetch('/upload', options)
+                    .then(() => {
+                        if (polling)
+                            clearInterval(polling)
+                        openModal(false)
+                        location.reload()
+                    })
+                    .catch(e => console.error('Error uploading file', e))
+                
+                handleProgress()
+            }
+
+            document.onreadystatechange = function() {
+                if (document.readyState == 'complete') {
+                    var elements = document.querySelectorAll('.size')
+                    elements.forEach(function(element) {
+                        var convertedVal = bytesToSize(parseInt(element.innerText))
+                        element.innerHTML = convertedVal
+                    })
+                }
+            }
+
+            function openModal(yes) {
+                const elems = document.querySelectorAll('.modal')
+                const instances = M.Modal.init(elems)
+
+                if (yes) {
+                    instances[0].open()
+                } else {
+                    instances[0].close()
+                }
+            }
+
+            function handleProgress() {
+                const fileInput = document.querySelector('#fileInput')
+                const fileName = fileInput.files[0].name
+                
+                openModal(true)
+
+                document.getElementById('modalFileName').innerText = fileName
+
+                polling = setInterval(() => {
+                    fetch('/progress?file=' + fileName)
+                        .then(res => res.text())
+                        .then(progress => {
+                            if (parseInt(progress)) {
+                                document.getElementById('modalPercentageProgress').innerText = progress
+                                document.querySelector('.determinate').style.width = parseInt(progress) + '%'
+                            }
+                        })
+                        .catch(e => console.error(e))
+                }, 1000)
+            }
+        </script>
+    </body>
+</html>
